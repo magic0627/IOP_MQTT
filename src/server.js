@@ -41,7 +41,7 @@ function getLocalIPAddresses() {
  */
 aedes.authenticate = (client, username, password, callback) => {
   const isAuth = username === 'iop' && password && password.toString() === 'kh666';
-  
+
   if (isAuth) {
     logger.info(`[Auth Success] 使用者 '${username}' 授權成功 (Client ID: ${client.id})`);
     callback(null, true);
@@ -73,10 +73,33 @@ aedes.on('subscribe', (subscriptions, client) => {
   }
 });
 
+// 判斷是否為純文字或數字 (UTF-8 字串)
+function isTextPayload(buffer) {
+  if (!buffer || buffer.length === 0) return true;
+  for (let i = 0; i < buffer.length; i++) {
+    const byte = buffer[i];
+    // 排除非 Tab(9), LF(10), CR(13) 的控制字元
+    if (byte < 32 && byte !== 9 && byte !== 10 && byte !== 13) {
+      return false;
+    }
+  }
+  // 檢查是否包含無效的 UTF-8 字元
+  if (buffer.toString('utf8').includes('\uFFFD')) {
+    return false;
+  }
+  return true;
+}
+
 // 紀錄訊息發布事件
 aedes.on('publish', (packet, client) => {
   if (client) {
-    logger.info(`[Publish] Client ID: ${client.id}, Topic: ${packet.topic}, Payload: ${packet.payload.toString()}`);
+    let displayPayload = '';
+    if (isTextPayload(packet.payload)) {
+      displayPayload = packet.payload.toString('utf8');
+    } else {
+      displayPayload = `[Binary, Size: ${packet.payload.length} bytes]`;
+    }
+    logger.info(`[Publish] CID: ${client.id}, 主題: ${packet.topic}, 內容: ${displayPayload}`);
   }
 });
 
@@ -86,7 +109,7 @@ const server = net.createServer(aedes.handle);
 
 server.listen(port, '0.0.0.0', () => {
   logger.info(`MQTT 伺服器已成功啟動並監聽於 port ${port} (0.0.0.0)`);
-  
+
   const localIPs = getLocalIPAddresses();
   if (localIPs.length > 0) {
     logger.info('您可以透過以下 IP 位址讓區域網路內的裝置進行連線：');
@@ -94,9 +117,9 @@ server.listen(port, '0.0.0.0', () => {
       logger.info(`  -> mqtt://${ip}:${port}`);
     });
   }
-  
+
   logger.info(`另外您也可以使用本機測試位址：`);
   logger.info(`  -> mqtt://127.0.0.1:${port}`);
-  
+
   logger.info('等待裝置連線中...');
 });
